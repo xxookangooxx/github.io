@@ -1,0 +1,2530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>静电场 · 扫雷 · 自定义</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0; height: 100%;
+            background: #060a10;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, "PingFang SC", monospace;
+            -webkit-user-select: none; user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #game { display: block; width: 100%; height: 100%; touch-action: none; }
+
+        /* ===== 顶部 HUD ===== */
+        #hud {
+            position: fixed; top: 0; left: 0; right: 0;
+            display: flex; justify-content: center;
+            padding: 8px 12px;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .hud-panel {
+            background: rgba(12, 22, 32, 0.92);
+            border: 1.5px solid #2d5a6e;
+            border-radius: 12px;
+            padding: 6px 14px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            display: flex; gap: 14px; align-items: center;
+            pointer-events: auto;
+        }
+        .stat {
+            display: flex; flex-direction: column; align-items: center;
+            min-width: 58px;
+        }
+        .stat-label {
+            font-size: 9px; color: #5e8fa8;
+            letter-spacing: 1px; text-transform: uppercase;
+            margin-bottom: 2px; font-weight: 600;
+        }
+        .stat-value {
+            font-size: 18px; font-weight: 800;
+            color: #d4f0ff;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            text-shadow: 0 0 12px rgba(100, 180, 255, 0.4);
+            white-space: nowrap;
+        }
+        .stat.mines .stat-value { color: #ff8a8a; text-shadow: 0 0 14px rgba(255,100,100,0.5); }
+        .stat.timer .stat-value { color: #7dd8a0; text-shadow: 0 0 12px rgba(125,216,160,0.4); }
+        #resetBtn {
+            width: 38px; height: 38px;
+            background: rgba(20, 40, 55, 0.9);
+            border: 1.5px solid #3d7186;
+            border-radius: 10px;
+            color: #8fc4dd;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s ease;
+        }
+        #resetBtn:hover {
+            background: rgba(45, 110, 150, 0.95);
+            border-color: #6ad4ff;
+            box-shadow: 0 0 12px rgba(106,212,255,0.4);
+        }
+
+        /* ===== 道具栏 ===== */
+        #itemBar {
+            position: fixed;
+            bottom: 62px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; gap: 8px;
+            z-index: 25;
+            padding: 8px 12px;
+            background: rgba(12, 22, 32, 0.92);
+            border: 1.5px solid #2d5a6e;
+            border-radius: 16px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.3s;
+        }
+        #itemBar.visible { opacity: 1; visibility: visible; }
+        .item-slot {
+            width: 58px; height: 64px;
+            background: rgba(20, 40, 55, 0.75);
+            border: 1.5px solid #2d5a6e;
+            border-radius: 12px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            position: relative;
+        }
+        .item-slot:hover:not(.empty):not(.disabled) {
+            background: rgba(35, 70, 95, 0.95);
+            border-color: #5aa8cc;
+            transform: translateY(-2px);
+        }
+        .item-slot.active {
+            background: rgba(45, 110, 150, 0.95);
+            border-color: #6ad4ff;
+            box-shadow: 0 0 16px rgba(106,212,255,0.6);
+            transform: translateY(-2px);
+        }
+        .item-slot.empty, .item-slot.disabled {
+            opacity: 0.28;
+            cursor: not-allowed;
+        }
+        .item-slot .item-icon {
+            font-size: 22px;
+            line-height: 1;
+            margin-bottom: 2px;
+        }
+        .item-slot .item-name {
+            font-size: 9px;
+            font-weight: 700;
+            color: #a8c8dc;
+        }
+        .item-slot .item-count {
+            position: absolute;
+            top: -6px; right: -6px;
+            background: #2d7fb8;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 800;
+            min-width: 20px; height: 20px;
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 10px rgba(106,212,255,0.4);
+            border: 1.5px solid #b0e0ff;
+        }
+        .item-slot.active .item-count {
+            background: #2ed573;
+            border-color: #b0ffc8;
+        }
+        .item-slot .item-key {
+            position: absolute;
+            top: 2px; left: 4px;
+            font-size: 8px;
+            font-weight: 700;
+            color: #4a7a92;
+            font-family: monospace;
+        }
+
+        /* ===== Toast ===== */
+        #toast {
+            position: fixed; bottom: 156px; left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(20, 30, 45, 0.94);
+            color: #a8d8ff; padding: 9px 22px;
+            border-radius: 30px; font-size: 13px;
+            border: 1px solid #3d7186;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+            opacity: 0; transition: all 0.35s ease;
+            pointer-events: none; z-index: 30;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #toast.success { border-color: #2ed573; color: #b0ffc8; }
+        #toast.warn { border-color: #ffa502; color: #ffe0a0; }
+        #toast.item { border-color: #b06cff; color: #e0d0ff; }
+
+        /* ===== 底部提示 ===== */
+        #hintBar {
+            position: fixed; bottom: 12px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(12, 22, 32, 0.88);
+            border: 1.5px solid #2d5a6e;
+            border-radius: 12px;
+            padding: 5px 16px;
+            color: #8fc4dd;
+            font-size: 10.5px;
+            z-index: 20;
+            pointer-events: none;
+            display: flex; gap: 12px;
+            white-space: nowrap;
+            opacity: 0; transition: opacity 0.4s;
+        }
+        #hintBar.visible { opacity: 1; }
+        #hintBar kbd {
+            background: rgba(45, 110, 150, 0.5);
+            border: 1px solid #3d7186;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-family: monospace;
+            color: #b0e0ff;
+            font-weight: 700;
+            margin-right: 2px;
+        }
+
+        /* ===== 菜单按钮 ===== */
+        #menuBtn {
+            position: fixed; top: 10px; right: 10px;
+            width: 40px; height: 40px;
+            background: rgba(20, 40, 55, 0.85);
+            border: 1.5px solid #3d7186;
+            border-radius: 10px;
+            color: #8fc4dd;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 50;
+            opacity: 0; visibility: hidden;
+            transition: all 0.2s;
+        }
+        #menuBtn.visible { opacity: 1; visibility: visible; }
+        #menuBtn:hover {
+            background: rgba(35, 70, 95, 0.95);
+            border-color: #6ad4ff;
+            color: #ffffff;
+        }
+
+        /* ===== 开始界面 ===== */
+        #startScreen {
+            position: fixed; inset: 0;
+            background: radial-gradient(ellipse at center, #0f1e2e 0%, #060a10 100%);
+            display: flex; flex-direction: column;
+            justify-content: flex-start; align-items: center;
+            z-index: 200;
+            transition: opacity 0.5s ease, visibility 0.5s;
+            overflow-y: auto; padding: 24px 16px 40px 16px;
+        }
+        #startScreen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+        .start-logo {
+            font-size: 38px; font-weight: 900;
+            color: #a8d8ff;
+            letter-spacing: 6px;
+            text-shadow: 0 0 30px rgba(100, 180, 255, 0.6);
+            margin-bottom: 4px;
+            animation: logoFloat 3s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        @keyframes logoFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        .start-sub {
+            color: #5e8fa8; font-size: 11px;
+            letter-spacing: 4px; margin-bottom: 16px;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        .start-label {
+            color: #6b9fc0; font-size: 11px; letter-spacing: 2.5px;
+            margin-bottom: 10px; text-transform: uppercase;
+            text-align: center; font-weight: 600;
+        }
+
+        /* 难度卡片 */
+        .start-grid {
+            display: grid; gap: 8px;
+            max-width: 560px; width: 100%;
+            margin-bottom: 16px;
+        }
+        .start-grid.diff-grid { grid-template-columns: repeat(4, 1fr); }
+
+        .diff-card {
+            background: rgba(20, 40, 55, 0.7);
+            border: 1.5px solid #2d5a6e;
+            color: #8fc4dd;
+            padding: 12px 8px;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            font-size: 12.5px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+        .diff-card:hover {
+            background: rgba(35, 70, 95, 0.9);
+            border-color: #5aa8cc;
+            color: #d4f0ff;
+            transform: translateY(-2px);
+        }
+        .diff-card.selected {
+            background: rgba(45, 110, 150, 0.85);
+            border-color: #6ad4ff;
+            color: #ffffff;
+            box-shadow: 0 0 20px rgba(106, 212, 255, 0.5);
+        }
+        .diff-card .diff-icon { font-size: 22px; display: block; margin-bottom: 4px; }
+        .diff-card .diff-desc {
+            font-size: 9.5px; color: #6b9fc0;
+            font-weight: 400; margin-top: 4px; display: block;
+        }
+        .diff-card.selected .diff-desc { color: #b0e0ff; }
+        .diff-card .diff-best {
+            font-size: 9px; color: #4a7a92;
+            margin-top: 3px; font-weight: 400;
+            display: block;
+            min-height: 11px;
+        }
+        .diff-card .diff-best.has-best { color: #ffd966; }
+
+        /* 自定义面板 */
+        #customPanel {
+            max-width: 560px; width: 100%;
+            background: rgba(15, 28, 38, 0.85);
+            border: 1.5px solid #2d5a6e;
+            border-radius: 14px;
+            padding: 14px 18px;
+            margin-bottom: 16px;
+            display: none;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease, padding 0.3s ease, margin 0.3s ease;
+        }
+        #customPanel.open {
+            display: block;
+            max-height: 1000px;
+        }
+        .custom-section {
+            margin-bottom: 14px;
+        }
+        .custom-section:last-child { margin-bottom: 0; }
+        .custom-section-title {
+            color: #6ad4ff;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .custom-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .custom-row label {
+            color: #8fc4dd;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 68px;
+            letter-spacing: 0.3px;
+        }
+        .custom-row input[type="number"] {
+            background: rgba(10, 20, 30, 0.9);
+            border: 1.5px solid #2d5a6e;
+            border-radius: 8px;
+            color: #d4f0ff;
+            padding: 6px 10px;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: inherit;
+            width: 80px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .custom-row input[type="number"]:focus {
+            border-color: #6ad4ff;
+            box-shadow: 0 0 8px rgba(106,212,255,0.3);
+        }
+        .custom-row input[type="range"] {
+            flex: 1;
+            accent-color: #6ad4ff;
+            height: 4px;
+        }
+        .custom-row .range-val {
+            color: #ffd966;
+            font-size: 12px;
+            font-weight: 800;
+            min-width: 36px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* 复选框组 */
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #a8c8dc;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            letter-spacing: 0.3px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .checkbox-item:hover {
+            background: rgba(45, 110, 150, 0.2);
+        }
+        .checkbox-item input[type="checkbox"] {
+            appearance: none;
+            width: 16px; height: 16px;
+            border: 1.5px solid #3d7186;
+            border-radius: 4px;
+            background: rgba(10, 20, 30, 0.9);
+            cursor: pointer;
+            position: relative;
+            transition: all 0.15s;
+            margin: 0;
+            flex-shrink: 0;
+        }
+        .checkbox-item input[type="checkbox"]:checked {
+            background: #2d7fb8;
+            border-color: #6ad4ff;
+            box-shadow: 0 0 8px rgba(106,212,255,0.4);
+        }
+        .checkbox-item input[type="checkbox"]:checked::after {
+            content: '✓';
+            position: absolute;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 900;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            line-height: 1;
+        }
+        .checkbox-item.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        /* 地雷类型说明小标签 */
+        .mine-type-info {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        .mine-type-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 20px;
+            background: rgba(20, 40, 55, 0.7);
+            border: 1px solid #2d5a6e;
+            color: #8fc4dd;
+            font-weight: 600;
+        }
+        .mine-type-tag .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .mine-type-tag .dot.point { background: #ff5c6c; }
+        .mine-type-tag .dot.hring {
+            width: 12px; height: 7px;
+            border-radius: 50%;
+            background: #ff9f43;
+        }
+        .mine-type-tag .dot.vring {
+            width: 7px; height: 12px;
+            border-radius: 50%;
+            background: #b06cff;
+        }
+
+        .start-play {
+            background: linear-gradient(135deg, #1e6b8c, #2d8fb5);
+            border: 2px solid #6ad4ff;
+            color: #ffffff;
+            padding: 13px 64px;
+            border-radius: 50px;
+            font-size: 16px; font-weight: 900;
+            letter-spacing: 5px; cursor: pointer;
+            box-shadow: 0 8px 28px rgba(45, 143, 181, 0.6);
+            transition: all 0.2s ease;
+            animation: playPulse 2s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        @keyframes playPulse {
+            0%, 100% { box-shadow: 0 8px 28px rgba(45, 143, 181, 0.6); }
+            50% { box-shadow: 0 8px 28px rgba(45, 143, 181, 0.8), 0 0 50px rgba(106, 212, 255, 0.6); }
+        }
+        .start-play:hover { transform: translateY(-3px) scale(1.03); }
+        .start-play:active { transform: translateY(0) scale(1); }
+
+        /* ===== 暂停 / 结果 ===== */
+        #pauseScreen, #resultScreen {
+            position: fixed; inset: 0;
+            background: rgba(6, 10, 18, 0.92);
+            backdrop-filter: blur(8px);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 150;
+            transition: opacity 0.3s ease, visibility 0.3s;
+        }
+        #resultScreen { z-index: 140; }
+        #pauseScreen.hidden, #resultScreen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+        .pause-title {
+            color: #a8d8ff; font-size: 24px; font-weight: 800;
+            letter-spacing: 4px; margin-bottom: 24px;
+        }
+        .pause-btn {
+            background: rgba(20, 40, 55, 0.9);
+            border: 1.5px solid #3d7186;
+            color: #8fc4dd;
+            padding: 12px 42px;
+            border-radius: 40px;
+            font-size: 14px; font-weight: 700;
+            letter-spacing: 2px; cursor: pointer;
+            margin-bottom: 10px;
+            transition: all 0.2s ease;
+            min-width: 210px;
+        }
+        .pause-btn:hover {
+            background: rgba(45, 110, 150, 0.9);
+            border-color: #6ad4ff;
+            color: #ffffff;
+            transform: translateY(-2px);
+        }
+        .pause-btn.primary {
+            background: linear-gradient(135deg, #1e6b8c, #2d8fb5);
+            border-color: #6ad4ff;
+            color: #ffffff;
+        }
+        .result-icon {
+            font-size: 68px; margin-bottom: 12px;
+            animation: iconPop 0.5s ease-out;
+        }
+        @keyframes iconPop {
+            0% { transform: scale(0); }
+            70% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .result-title {
+            color: #d4f0ff; font-size: 22px; font-weight: 800;
+            letter-spacing: 4px; margin-bottom: 16px;
+        }
+        .result-title.win { color: #2ed573; }
+        .result-title.lose { color: #ff4757; }
+        .result-stats {
+            display: flex; gap: 22px;
+            margin-bottom: 22px;
+            padding: 12px 28px;
+            background: rgba(20, 40, 55, 0.6);
+            border: 1px solid #2d5a6e;
+            border-radius: 14px;
+        }
+        .result-stat {
+            display: flex; flex-direction: column; align-items: center;
+            min-width: 74px;
+        }
+        .result-stat .rs-label {
+            font-size: 10px; color: #5e8fa8;
+            letter-spacing: 1.5px; text-transform: uppercase;
+            margin-bottom: 5px; font-weight: 600;
+        }
+        .result-stat .rs-value {
+            font-size: 20px; font-weight: 800;
+            color: #d4f0ff;
+            font-variant-numeric: tabular-nums;
+        }
+        .result-stat .rs-value.gold { color: #ffd966; }
+        .result-stat .rs-unit {
+            font-size: 10px; color: #4a7a92;
+            margin-top: 3px;
+        }
+        .result-buttons { display: flex; gap: 12px; }
+        .result-btn {
+            background: rgba(20, 40, 55, 0.9);
+            border: 1.5px solid #3d7186;
+            color: #8fc4dd;
+            padding: 11px 32px;
+            border-radius: 40px;
+            font-size: 13px; font-weight: 700;
+            letter-spacing: 2px; cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 120px;
+        }
+        .result-btn:hover {
+            background: rgba(45, 110, 150, 0.9);
+            border-color: #6ad4ff;
+            color: #ffffff;
+            transform: translateY(-2px);
+        }
+        .result-btn.primary {
+            background: linear-gradient(135deg, #1e6b8c, #2d8fb5);
+            border-color: #6ad4ff;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- 顶部 HUD -->
+<div id="hud">
+    <div class="hud-panel">
+        <div class="stat mines">
+            <div class="stat-label">⚡ 剩余</div>
+            <div class="stat-value" id="mineCount">10</div>
+        </div>
+        <button id="resetBtn" title="重新开始">🔄</button>
+        <div class="stat timer">
+            <div class="stat-label">⏱ 时间</div>
+            <div class="stat-value"><span id="timer">0</span><span style="font-size:10px;color:#5e8fa8;">s</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- 道具栏 -->
+<div id="itemBar">
+    <div class="item-slot" data-item="probe">
+        <div class="item-key">1</div>
+        <div class="item-icon">🔍</div>
+        <div class="item-name">探测</div>
+        <div class="item-count" id="countProbe">0</div>
+    </div>
+    <div class="item-slot" data-item="scan">
+        <div class="item-key">2</div>
+        <div class="item-icon">📡</div>
+        <div class="item-name">扫描</div>
+        <div class="item-count" id="countScan">0</div>
+    </div>
+    <div class="item-slot" data-item="vector">
+        <div class="item-key">3</div>
+        <div class="item-icon">➡️</div>
+        <div class="item-name">矢量</div>
+        <div class="item-count" id="countVector">0</div>
+    </div>
+    <div class="item-slot" data-item="locate">
+        <div class="item-key">4</div>
+        <div class="item-icon">🎯</div>
+        <div class="item-name">定位</div>
+        <div class="item-count" id="countLocate">0</div>
+    </div>
+    <div class="item-slot" data-item="shield">
+        <div class="item-key">5</div>
+        <div class="item-icon">🛡️</div>
+        <div class="item-name">护盾</div>
+        <div class="item-count" id="countShield">0</div>
+    </div>
+</div>
+
+<!-- 底部提示 -->
+<div id="hintBar">
+    <span><kbd>左键</kbd> 探测</span>
+    <span><kbd>右键/长按</kbd> 标记</span>
+    <span><kbd>1-5</kbd> 道具</span>
+    <span><kbd>R</kbd> 重开</span>
+</div>
+
+<!-- 提示 -->
+<div id="toast"></div>
+
+<!-- 菜单按钮 -->
+<button id="menuBtn" title="菜单">☰</button>
+
+<!-- ===== 开始界面 ===== -->
+<div id="startScreen">
+    <div class="start-logo">⚡ 静电场扫雷</div>
+    <div class="start-sub">道具 · 探测 · 自定义</div>
+
+    <div class="start-label">选择难度</div>
+    <div class="start-grid diff-grid" id="startDiffGrid">
+        <div class="diff-card selected" data-diff="easy">
+            <span class="diff-icon">🟢</span>
+            简单
+            <span class="diff-desc">9 × 9 · 10</span>
+            <span class="diff-best" id="bestEasy"></span>
+        </div>
+        <div class="diff-card" data-diff="medium">
+            <span class="diff-icon">🟡</span>
+            中等
+            <span class="diff-desc">12 × 12 · 22</span>
+            <span class="diff-best" id="bestMedium"></span>
+        </div>
+        <div class="diff-card" data-diff="hard">
+            <span class="diff-icon">🔴</span>
+            困难
+            <span class="diff-desc">16 × 16 · 40</span>
+            <span class="diff-best" id="bestHard"></span>
+        </div>
+        <div class="diff-card" data-diff="custom">
+            <span class="diff-icon">⚙️</span>
+            自定义
+            <span class="diff-desc">自由配置</span>
+            <span class="diff-best"></span>
+        </div>
+    </div>
+
+    <!-- 自定义面板 -->
+    <div id="customPanel">
+        <div class="custom-section">
+            <div class="custom-section-title">网格尺寸</div>
+            <div class="custom-row">
+                <label>列数</label>
+                <input type="range" id="customCols" min="5" max="24" value="12">
+                <span class="range-val" id="colsVal">12</span>
+            </div>
+            <div class="custom-row">
+                <label>行数</label>
+                <input type="range" id="customRows" min="5" max="24" value="12">
+                <span class="range-val" id="rowsVal">12</span>
+            </div>
+            <div class="custom-row">
+                <label>电荷数</label>
+                <input type="range" id="customMines" min="3" max="80" value="22">
+                <span class="range-val" id="minesVal">22</span>
+            </div>
+            <div style="font-size:10px; color:#4a7a92; margin-top:4px; padding-left:80px;">
+                实际上限受网格大小限制
+            </div>
+        </div>
+
+        <div class="custom-section">
+            <div class="custom-section-title">地雷类型</div>
+            <div class="checkbox-group">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="typePoint" checked>
+                    <span>点电荷</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="typeHRing" checked>
+                    <span>水平环</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="typeVRing" checked>
+                    <span>垂直环</span>
+                </label>
+            </div>
+            <div class="mine-type-info">
+                <span class="mine-type-tag"><span class="dot point"></span>点电荷·标准</span>
+                <span class="mine-type-tag"><span class="dot hring"></span>水平环·横向场强</span>
+                <span class="mine-type-tag"><span class="dot vring"></span>垂直环·纵向场强</span>
+            </div>
+        </div>
+
+        <div class="custom-section">
+            <div class="custom-section-title">启用道具</div>
+            <div class="checkbox-group">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="itemProbe" checked>
+                    <span>🔍 探测</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="itemScan" checked>
+                    <span>📡 扫描</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="itemVector" checked>
+                    <span>➡️ 矢量</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="itemLocate" checked>
+                    <span>🎯 定位</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="itemShield" checked>
+                    <span>🛡️ 护盾</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <button class="start-play" id="startPlay">开始探测</button>
+</div>
+
+<!-- ===== 暂停 ===== -->
+<div id="pauseScreen" class="hidden">
+    <div class="pause-title">⏸ 已暂停</div>
+    <button class="pause-btn primary" id="resumeBtn">继续探测</button>
+    <button class="pause-btn" id="restartBtn">重新开始</button>
+    <button class="pause-btn" id="backToMenuBtn">返回主菜单</button>
+</div>
+
+<!-- ===== 结果 ===== -->
+<div id="resultScreen" class="hidden">
+    <div class="result-icon" id="resultIcon">🏆</div>
+    <div class="result-title" id="resultTitle">探测成功</div>
+    <div class="result-stats">
+        <div class="result-stat">
+            <div class="rs-label">用时</div>
+            <div class="rs-value gold" id="resultTime">0</div>
+            <div class="rs-unit">秒</div>
+        </div>
+        <div class="result-stat">
+            <div class="rs-label">难度</div>
+            <div class="rs-value" id="resultDiff" style="font-size:15px;">简单</div>
+            <div class="rs-unit" id="resultSize">9×9</div>
+        </div>
+    </div>
+    <div class="result-buttons">
+        <button class="result-btn" id="menuBtn2">菜单</button>
+        <button class="result-btn primary" id="retryBtn">再来一局</button>
+    </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ============================================================
+//  基础工具
+// ============================================================
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const rndInt = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
+
+// ============================================================
+//  难度配置
+// ============================================================
+const DIFFICULTIES = {
+    easy:   { cols: 9,  rows: 9,  mines: 10, name: '简单', startItems: { probe: 3, scan: 2, vector: 2, locate: 0, shield: 0 } },
+    medium: { cols: 12, rows: 12, mines: 22, name: '中等', startItems: { probe: 4, scan: 2, vector: 2, locate: 1, shield: 0 } },
+    hard:   { cols: 16, rows: 16, mines: 40, name: '困难', startItems: { probe: 5, scan: 3, vector: 3, locate: 1, shield: 1 } },
+};
+
+// 道具配置
+const ITEMS = {
+    probe:  { icon: '🔍', name: '探测' },
+    scan:   { icon: '📡', name: '扫描' },
+    vector: { icon: '➡️', name: '矢量' },
+    locate: { icon: '🎯', name: '定位' },
+    shield: { icon: '🛡️', name: '护盾' },
+};
+
+// 地雷类型配置
+const MINE_TYPES = {
+    point:  { name: '点电荷', short: '点' },
+    hring:  { name: '水平环', short: 'H' },
+    vring:  { name: '垂直环', short: 'V' },
+};
+
+const NUM_COLORS = {
+    1: '#4d9fff', 2: '#2ed573', 3: '#ff5c6c', 4: '#b06cff',
+    5: '#ffa502', 6: '#00d4d4', 7: '#ff9fbf', 8: '#a0b0c0',
+};
+
+// ============================================================
+//  进度存储
+// ============================================================
+const STORAGE_KEY = 'electrostatic_minesweeper_v4';
+const PREFS_KEY = 'electrostatic_minesweeper_prefs_v4';
+
+function loadBest() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+}
+function saveBest(data) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+}
+function loadPrefs() {
+    try {
+        const raw = localStorage.getItem(PREFS_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+}
+function savePrefs(prefs) {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {}
+}
+
+// ============================================================
+//  Toast
+// ============================================================
+const toastEl = document.getElementById('toast');
+let toastTimer = 0;
+function showToast(msg, duration = 1800, type = '') {
+    toastEl.textContent = msg;
+    toastEl.className = 'show ' + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.className = ''; }, duration);
+}
+
+// ============================================================
+//  音效
+// ============================================================
+let audioCtx = null;
+function initAudio() {
+    if (!audioCtx) {
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        catch (e) { audioCtx = null; }
+    }
+}
+function playTone(freq, dur, type = 'sine', vol = 0.06) {
+    if (!audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.value = vol;
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+    } catch (e) {}
+}
+function sfxClick() { playTone(500, 0.05, 'sine', 0.04); }
+function sfxReveal() { playTone(650, 0.04, 'sine', 0.03); }
+function sfxFlag() { playTone(880, 0.07, 'triangle', 0.05); }
+function sfxUnflag() { playTone(440, 0.05, 'triangle', 0.04); }
+function sfxItem() { playTone(900, 0.08, 'triangle', 0.05); setTimeout(() => playTone(1200, 0.1), 60); }
+function sfxDrop() { playTone(700, 0.05, 'sine', 0.04); setTimeout(() => playTone(1000, 0.08), 60); setTimeout(() => playTone(1300, 0.1), 130); }
+function sfxWin() { playTone(523, 0.15, 'sine', 0.08); setTimeout(() => playTone(659, 0.15), 130); setTimeout(() => playTone(784, 0.3), 260); }
+function sfxLose() { playTone(220, 0.25, 'sawtooth', 0.07); setTimeout(() => playTone(160, 0.35, 'sawtooth', 0.06), 180); }
+
+// ============================================================
+//  画布
+// ============================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;
+
+function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth;
+    H = canvas.clientHeight;
+    canvas.width  = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// ============================================================
+//  游戏状态
+// ============================================================
+const state = {
+    running: false,
+    paused: false,
+    gameState: 'ready',
+    difficulty: 'easy',
+    cols: 9, rows: 9, mineCount: 10,
+    grid: [],
+    cellSize: 0,
+    offsetX: 0, offsetY: 0,
+    startTime: 0, elapsed: 0,
+    particles: [],
+    best: loadBest(),
+    longPressTimer: null,
+    longPressUsed: false,
+    pointerDownCell: null,
+    ripples: [],
+    // 道具
+    inventory: {},
+    itemEnabled: { probe: true, scan: true, vector: true, locate: true, shield: true },
+    activeItem: null,
+    shieldActive: false,
+    shieldGlow: 0,
+    // 地雷类型
+    mineTypes: { point: true, hring: true, vring: true },
+    // 自定义配置
+    customConfig: null,
+};
+
+// 加载偏好
+const savedPrefs = loadPrefs();
+if (savedPrefs) {
+    if (savedPrefs.customConfig) {
+        state.customConfig = savedPrefs.customConfig;
+    }
+    if (savedPrefs.itemEnabled) {
+        state.itemEnabled = { ...state.itemEnabled, ...savedPrefs.itemEnabled };
+    }
+    if (savedPrefs.mineTypes) {
+        state.mineTypes = { ...state.mineTypes, ...savedPrefs.mineTypes };
+    }
+}
+
+// ============================================================
+//  初始化网格
+// ============================================================
+function initGrid() {
+    state.grid = [];
+    for (let y = 0; y < state.rows; y++) {
+        const row = [];
+        for (let x = 0; x < state.cols; x++) {
+            row.push({
+                isMine: false,
+                isRevealed: false,
+                isFlagged: false,
+                isWrongFlag: false,
+                adjacent: 0,
+                revealAt: 0,
+                mineSign: 0,
+                mineQ: 0,
+                mineType: 'point',
+                hasNumber: false,
+                hasForce: false,
+                infoPulse: 0,
+            });
+        }
+        state.grid.push(row);
+    }
+}
+
+// ============================================================
+//  选择地雷类型
+// ============================================================
+function pickMineType() {
+    const enabled = [];
+    if (state.mineTypes.point) enabled.push('point');
+    if (state.mineTypes.hring) enabled.push('hring');
+    if (state.mineTypes.vring) enabled.push('vring');
+    if (enabled.length === 0) return 'point';
+
+    // 权重：point 常见，环少见
+    const weights = { point: 6, hring: 2, vring: 2 };
+    let total = 0;
+    const pool = [];
+    for (const t of enabled) {
+        total += weights[t];
+        pool.push({ type: t, w: weights[t] });
+    }
+    let r = Math.random() * total;
+    for (const p of pool) {
+        r -= p.w;
+        if (r <= 0) return p.type;
+    }
+    return 'point';
+}
+
+// ============================================================
+//  放置电荷
+// ============================================================
+function placeMines(safeX, safeY) {
+    const forbidden = new Set();
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            const nx = safeX + dx, ny = safeY + dy;
+            if (nx >= 0 && nx < state.cols && ny >= 0 && ny < state.rows) {
+                forbidden.add(ny * state.cols + nx);
+            }
+        }
+    }
+
+    let placed = 0, attempts = 0;
+    const maxAttempts = state.cols * state.rows * 40;
+    while (placed < state.mineCount && attempts < maxAttempts) {
+        attempts++;
+        const x = rndInt(0, state.cols - 1);
+        const y = rndInt(0, state.rows - 1);
+        const idx = y * state.cols + x;
+        if (forbidden.has(idx)) continue;
+        if (state.grid[y][x].isMine) continue;
+        const cell = state.grid[y][x];
+        cell.isMine = true;
+        cell.mineType = pickMineType();
+        cell.mineSign = Math.random() < 0.5 ? 1 : -1;
+        cell.mineQ = 0.8 + Math.random() * 1.6;
+        placed++;
+    }
+
+    for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) {
+            if (state.grid[y][x].isMine) continue;
+            let count = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < state.cols && ny >= 0 && ny < state.rows) {
+                        if (state.grid[ny][nx].isMine) count++;
+                    }
+                }
+            }
+            state.grid[y][x].adjacent = count;
+        }
+    }
+}
+
+// ============================================================
+//  电场计算（考虑地雷类型）
+// ============================================================
+function computeFieldAt(px, py) {
+    let fx = 0, fy = 0;
+    const s = state.cellSize;
+    for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) {
+            const cell = state.grid[y][x];
+            if (!cell.isMine) continue;
+            const cx = state.offsetX + x * s + s / 2;
+            const cy = state.offsetY + y * s + s / 2;
+            const dx = px - cx, dy = py - cy;
+            const d2 = dx * dx + dy * dy + s * s * 0.6;
+            const r = Math.sqrt(d2);
+            const k = cell.mineSign * cell.mineQ * 3500 / (d2 * r);
+
+            if (cell.mineType === 'hring') {
+                // 水平环：水平方向场强，垂直方向弱
+                fx += k * dx * 1.8;
+                fy += k * dy * 0.45;
+            } else if (cell.mineType === 'vring') {
+                // 垂直环：垂直方向场强，水平方向弱
+                fx += k * dx * 0.45;
+                fy += k * dy * 1.8;
+            } else {
+                fx += k * dx;
+                fy += k * dy;
+            }
+        }
+    }
+    return { fx, fy };
+}
+
+// ============================================================
+//  道具掉落
+// ============================================================
+function tryDropItem() {
+    if (Math.random() > 0.05) return;
+
+    // 只从启用的道具中掉落
+    const enabled = [];
+    const weights = { probe: 40, scan: 25, vector: 22, locate: 8, shield: 5 };
+    for (const key in state.itemEnabled) {
+        if (state.itemEnabled[key]) enabled.push(key);
+    }
+    if (enabled.length === 0) return;
+
+    let total = 0;
+    for (const e of enabled) total += weights[e];
+    let r = Math.random() * total;
+    let chosen = enabled[0];
+    for (const e of enabled) {
+        r -= weights[e];
+        if (r <= 0) { chosen = e; break; }
+    }
+
+    state.inventory[chosen] = (state.inventory[chosen] || 0) + 1;
+    updateItemBar();
+    const cfg = ITEMS[chosen];
+    showToast(`✨ 获得道具：${cfg.icon} ${cfg.name} ×1`, 1600, 'item');
+    sfxDrop();
+}
+
+// ============================================================
+//  道具使用
+// ============================================================
+function useItem(item, cx, cy) {
+    if (!state.itemEnabled[item]) {
+        showToast('该道具已被禁用', 1200, 'warn');
+        return false;
+    }
+    if ((state.inventory[item] || 0) <= 0) {
+        showToast('道具不足', 1200, 'warn');
+        return false;
+    }
+
+    const cell = state.grid[cy][cx];
+
+    switch (item) {
+        case 'probe': {
+            if (cell.isRevealed || cell.isFlagged) {
+                showToast('该格已揭示或标记', 1200, 'warn');
+                return false;
+            }
+            if (cell.isMine) {
+                cell.isRevealed = true;
+                cell.revealAt = performance.now();
+                cell.isFlagged = true;
+                cell.hasNumber = true;
+                showToast('⚡ 探测到电荷！已自动标记', 1800, 'warn');
+                updateMineCount();
+                spawnRipple(cx, cy);
+            } else {
+                cell.isRevealed = true;
+                cell.revealAt = performance.now();
+                cell.hasNumber = true;
+                spawnRipple(cx, cy);
+                if (cell.adjacent === 0) revealAreaNoInfo(cx, cy);
+            }
+            break;
+        }
+        case 'scan': {
+            let scanned = 0, minesFound = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = cx + dx, ny = cy + dy;
+                    if (nx < 0 || nx >= state.cols || ny < 0 || ny >= state.rows) continue;
+                    const c = state.grid[ny][nx];
+                    if (c.isRevealed || c.isFlagged) continue;
+                    if (c.isMine) {
+                        c.isRevealed = true;
+                        c.revealAt = performance.now();
+                        c.isFlagged = true;
+                        minesFound++;
+                        spawnParticleAt(nx, ny, '#ff5c6c');
+                    } else {
+                        c.isRevealed = true;
+                        c.revealAt = performance.now();
+                        c.hasNumber = true;
+                        scanned++;
+                    }
+                }
+            }
+            updateMineCount();
+            showToast(minesFound > 0
+                ? `📡 扫描完成：发现 ${minesFound} 个电荷，揭示 ${scanned} 格`
+                : `📡 扫描完成：揭示 ${scanned} 格`, 1800, minesFound > 0 ? 'warn' : '');
+            spawnRipple(cx, cy, 2);
+            break;
+        }
+        case 'vector': {
+            if (!cell.isRevealed) {
+                showToast('请先揭示该格', 1500, 'warn');
+                return false;
+            }
+            let count = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = cx + dx, ny = cy + dy;
+                    if (nx < 0 || nx >= state.cols || ny < 0 || ny >= state.rows) continue;
+                    const c = state.grid[ny][nx];
+                    if (c.isRevealed && !c.isMine) {
+                        c.hasForce = true;
+                        c.infoPulse = 1;
+                        count++;
+                    }
+                }
+            }
+            showToast(`➡️ 力矢量已激活（${count} 格）`, 1500, '');
+            break;
+        }
+        case 'locate': {
+            const candidates = [];
+            for (let y = 0; y < state.rows; y++) {
+                for (let x = 0; x < state.cols; x++) {
+                    const c = state.grid[y][x];
+                    if (c.isMine && !c.isFlagged) candidates.push({ x, y });
+                }
+            }
+            if (candidates.length === 0) {
+                showToast('已无未标记电荷', 1500, 'warn');
+                return false;
+            }
+            const pick = candidates[rndInt(0, candidates.length - 1)];
+            state.grid[pick.y][pick.x].isFlagged = true;
+            updateMineCount();
+            showToast('🎯 已定位一个电荷', 1600, '');
+            spawnRipple(pick.x, pick.y);
+            break;
+        }
+        case 'shield': {
+            if (state.shieldActive) {
+                showToast('护盾已激活', 1200, 'warn');
+                return false;
+            }
+            state.shieldActive = true;
+            state.shieldGlow = 1;
+            showToast('🛡️ 护盾已激活', 1800, 'success');
+            break;
+        }
+    }
+
+    state.inventory[item]--;
+    updateItemBar();
+    sfxItem();
+    state.activeItem = null;
+    updateItemBar();
+    checkWin();
+    return true;
+}
+
+function revealAreaNoInfo(x, y) {
+    const stack = [[x, y]];
+    const now = performance.now();
+    while (stack.length > 0) {
+        const [cx, cy] = stack.pop();
+        const cell = state.grid[cy][cx];
+        if (!cell || cell.isRevealed || cell.isFlagged || cell.isMine) continue;
+        if (cell.adjacent !== 0) continue;
+        cell.isRevealed = true;
+        cell.revealAt = now;
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                const nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < state.cols && ny >= 0 && ny < state.rows) {
+                    const n = state.grid[ny][nx];
+                    if (!n.isRevealed && !n.isFlagged && !n.isMine && n.adjacent === 0) {
+                        stack.push([nx, ny]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+//  揭示
+// ============================================================
+function handleReveal(cx, cy) {
+    if (state.gameState === 'won' || state.gameState === 'lost') return;
+    const cell = state.grid[cy][cx];
+    if (!cell || cell.isRevealed || cell.isFlagged) return;
+
+    if (state.gameState === 'ready') {
+        placeMines(cx, cy);
+        state.gameState = 'playing';
+        state.startTime = performance.now();
+    }
+
+    if (cell.isMine) {
+        if (state.shieldActive) {
+            state.shieldActive = false;
+            state.shieldGlow = 0;
+            cell.isRevealed = true;
+            cell.revealAt = performance.now();
+            cell.isFlagged = true;
+            updateMineCount();
+            showToast('🛡️ 护盾抵挡了电荷！', 2200, 'success');
+            spawnRipple(cx, cy);
+            checkWin();
+            return;
+        }
+        cell.isRevealed = true;
+        cell.revealAt = performance.now();
+        state.gameState = 'lost';
+        revealAllMines();
+        sfxLose();
+        const s = state.cellSize;
+        const px = state.offsetX + cx * s + s / 2;
+        const py = state.offsetY + cy * s + s / 2;
+        for (let i = 0; i < 40; i++) spawnParticle(px, py, '#ff5c6c');
+        setTimeout(() => showResult(false), 800);
+        return;
+    }
+
+    cell.isRevealed = true;
+    cell.revealAt = performance.now();
+    sfxReveal();
+    const s = state.cellSize;
+    state.ripples.push({
+        x: state.offsetX + cx * s + s / 2,
+        y: state.offsetY + cy * s + s / 2,
+        r: 0, maxR: s * 3,
+        life: 0.45, maxLife: 0.45,
+    });
+    if (cell.adjacent === 0) revealAreaNoInfo(cx, cy);
+    tryDropItem();
+    checkWin();
+}
+
+function revealAllMines() {
+    const now = performance.now();
+    for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) {
+            const cell = state.grid[y][x];
+            if (cell.isMine && !cell.isFlagged) {
+                cell.isRevealed = true;
+                cell.revealAt = now;
+            } else if (!cell.isMine && cell.isFlagged) {
+                cell.isWrongFlag = true;
+                cell.isRevealed = true;
+                cell.revealAt = now;
+            }
+        }
+    }
+}
+
+function checkWin() {
+    for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) {
+            const c = state.grid[y][x];
+            if (!c.isMine && !c.isRevealed) return false;
+        }
+    }
+    if (state.gameState === 'playing') {
+        state.gameState = 'won';
+        for (let y = 0; y < state.rows; y++) {
+            for (let x = 0; x < state.cols; x++) {
+                if (state.grid[y][x].isMine) state.grid[y][x].isFlagged = true;
+            }
+        }
+        updateMineCount();
+        sfxWin();
+        setTimeout(() => showResult(true), 700);
+    }
+}
+
+function toggleFlag(cx, cy) {
+    if (state.gameState === 'won' || state.gameState === 'lost') return;
+    if (state.gameState === 'ready') return;
+    const cell = state.grid[cy][cx];
+    if (!cell || cell.isRevealed) return;
+    cell.isFlagged = !cell.isFlagged;
+    if (cell.isFlagged) sfxFlag(); else sfxUnflag();
+    updateMineCount();
+}
+
+function updateMineCount() {
+    let flagged = 0;
+    for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) {
+            if (state.grid[y][x].isFlagged) flagged++;
+        }
+    }
+    document.getElementById('mineCount').textContent = Math.max(0, state.mineCount - flagged);
+}
+
+// ============================================================
+//  粒子 / 涟漪
+// ============================================================
+function spawnParticle(x, y, color) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 30 + Math.random() * 120;
+    state.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.4 + Math.random() * 0.5,
+        maxLife: 0.9, color, r: 1.5 + Math.random() * 2.5,
+    });
+}
+function spawnParticleAt(cx, cy, color) {
+    const s = state.cellSize;
+    spawnParticle(state.offsetX + cx * s + s / 2, state.offsetY + cy * s + s / 2, color);
+}
+function spawnRipple(cx, cy, count = 1) {
+    const s = state.cellSize;
+    const x = state.offsetX + cx * s + s / 2;
+    const y = state.offsetY + cy * s + s / 2;
+    for (let i = 0; i < count; i++) {
+        state.ripples.push({
+            x, y, r: 0,
+            maxR: s * (3 + i * 1.5),
+            life: 0.5 + i * 0.1,
+            maxLife: 0.5 + i * 0.1,
+        });
+    }
+}
+
+// ============================================================
+//  布局
+// ============================================================
+function computeLayout() {
+    const topPad = 78;
+    const botPad = 150;
+    const sidePad = 14;
+    const availW = W - sidePad * 2;
+    const availH = H - topPad - botPad;
+    const cellSize = Math.floor(Math.min(availW / state.cols, availH / state.rows));
+    state.cellSize = cellSize;
+    const gridW = cellSize * state.cols;
+    const gridH = cellSize * state.rows;
+    state.offsetX = (W - gridW) / 2;
+    state.offsetY = topPad + (availH - gridH) / 2;
+}
+
+// ============================================================
+//  渲染
+// ============================================================
+function render() {
+    const now = performance.now();
+    const bgGrad = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.8);
+    bgGrad.addColorStop(0, '#0d1822');
+    bgGrad.addColorStop(1, '#060a10');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    if (!state.running) return;
+
+    drawBackgroundField(now);
+    drawGridLines();
+    updateParticles();
+    updateRipples();
+
+    if (state.shieldActive) {
+        state.shieldGlow = 0.7 + Math.sin(now / 250) * 0.3;
+        const s = state.cellSize;
+        ctx.save();
+        ctx.strokeStyle = `rgba(46, 213, 115, ${state.shieldGlow})`;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#2ed573';
+        ctx.shadowBlur = 20;
+        roundRect(state.offsetX - 8, state.offsetY - 8, state.cols * s + 16, state.rows * s + 16, 12);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) drawCell(x, y, now);
+    }
+
+    drawParticles();
+    drawRipples();
+
+    if (state.gameState === 'playing') {
+        state.elapsed = (now - state.startTime) / 1000;
+        document.getElementById('timer').textContent = Math.floor(state.elapsed);
+    }
+}
+
+function drawBackgroundField(now) {
+    if (state.gameState === 'ready') return;
+    const s = state.cellSize;
+    if (s <= 0) return;
+    const step = Math.max(80, s * 3.0);
+    ctx.save();
+    ctx.globalAlpha = 0.10;
+    const startX = state.offsetX + s / 2;
+    const startY = state.offsetY + s / 2;
+    const endX = state.offsetX + state.cols * s - s / 2;
+    const endY = state.offsetY + state.rows * s - s / 2;
+    for (let px = startX; px <= endX; px += step) {
+        for (let py = startY; py <= endY; py += step) {
+            const { fx, fy } = computeFieldAt(px, py);
+            const mag = Math.hypot(fx, fy);
+            if (mag < 1e-8) continue;
+            const nx = fx / mag, ny = fy / mag;
+            const len = clamp(Math.log(mag + 1) * 2.2, 4, 12);
+            const angle = Math.atan2(ny, nx);
+            const strength = clamp(mag / 3000, 0, 1);
+            const r = Math.round(60 + 195 * strength);
+            const g = Math.round(180 - 60 * strength);
+            const b = Math.round(255 - 130 * strength);
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.6)`;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.6)`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(px - nx * len * 0.5, py - ny * len * 0.5);
+            ctx.lineTo(px + nx * len * 0.5, py + ny * len * 0.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(px + nx * len * 0.5, py + ny * len * 0.5);
+            ctx.lineTo(px + nx * len * 0.5 - Math.cos(angle - 0.5) * 3, py + ny * len * 0.5 - Math.sin(angle - 0.5) * 3);
+            ctx.lineTo(px + nx * len * 0.5 - Math.cos(angle + 0.5) * 3, py + ny * len * 0.5 - Math.sin(angle + 0.5) * 3);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+    ctx.restore();
+}
+
+function drawGridLines() {
+    const s = state.cellSize;
+    if (s <= 0) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(45, 90, 110, 0.35)';
+    ctx.lineWidth = 1;
+    const gh = state.rows * s;
+    for (let i = 0; i <= state.cols; i++) {
+        ctx.beginPath();
+        ctx.moveTo(state.offsetX + i * s, state.offsetY);
+        ctx.lineTo(state.offsetX + i * s, state.offsetY + gh);
+        ctx.stroke();
+    }
+    const gw = state.cols * s;
+    for (let i = 0; i <= state.rows; i++) {
+        ctx.beginPath();
+        ctx.moveTo(state.offsetX, state.offsetY + i * s);
+        ctx.lineTo(state.offsetX + gw, state.offsetY + i * s);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function updateParticles() {
+    const dt = 0.016;
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.vx *= 0.94; p.vy *= 0.94;
+        p.life -= dt;
+        if (p.life <= 0) state.particles.splice(i, 1);
+    }
+}
+function drawParticles() {
+    for (const p of state.particles) {
+        const a = p.life / p.maxLife;
+        ctx.globalAlpha = a * 0.75;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * a, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+function updateRipples() {
+    const dt = 0.016;
+    for (let i = state.ripples.length - 1; i >= 0; i--) {
+        const r = state.ripples[i];
+        r.life -= dt;
+        r.r = r.maxR * (1 - r.life / r.maxLife);
+        if (r.life <= 0) state.ripples.splice(i, 1);
+    }
+}
+function drawRipples() {
+    for (const r of state.ripples) {
+        const a = r.life / r.maxLife;
+        ctx.strokeStyle = `rgba(106, 212, 255, ${a * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}
+
+// ============================================================
+//  绘制格子
+// ============================================================
+function drawCell(cx, cy, now) {
+    const s = state.cellSize;
+    const x = state.offsetX + cx * s;
+    const y = state.offsetY + cy * s;
+    const pad = Math.max(1, s * 0.04);
+    const r = Math.max(2, s * 0.15);
+    const cell = state.grid[cy][cx];
+    const centerX = x + s / 2;
+    const centerY = y + s / 2;
+
+    let revealProgress = 1;
+    if (cell.isRevealed) {
+        const t = (now - cell.revealAt) / 220;
+        revealProgress = clamp(t, 0, 1);
+    }
+    if (cell.infoPulse > 0) cell.infoPulse = Math.max(0, cell.infoPulse - 0.025);
+
+    if (!cell.isRevealed) {
+        const grad = ctx.createLinearGradient(x, y, x, y + s);
+        grad.addColorStop(0, '#1c3e52');
+        grad.addColorStop(1, '#12283a');
+        ctx.fillStyle = grad;
+        roundRect(x + pad, y + pad, s - pad * 2, s - pad * 2, r);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(106, 212, 255, 0.18)';
+        ctx.lineWidth = 1;
+        roundRect(x + pad, y + pad, s - pad * 2, s - pad * 2, r);
+        ctx.stroke();
+        const pulse = 0.5 + Math.sin(now / 800 + cx * 0.3 + cy * 0.5) * 0.5;
+        ctx.save();
+        ctx.globalAlpha = 0.08 * pulse;
+        ctx.fillStyle = '#6ad4ff';
+        roundRect(x + pad, y + pad, s - pad * 2, s - pad * 2, r);
+        ctx.fill();
+        ctx.restore();
+        if (cell.isFlagged) drawFlag(centerX, centerY, s, now);
+    } else {
+        const scale = 0.65 + 0.35 * revealProgress;
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.scale(scale, scale);
+        ctx.translate(-centerX, -centerY);
+
+        ctx.fillStyle = 'rgba(10, 18, 26, 0.92)';
+        roundRect(x + pad, y + pad, s - pad * 2, s - pad * 2, r);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(60, 110, 140, 0.35)';
+        ctx.lineWidth = 1;
+        roundRect(x + pad, y + pad, s - pad * 2, s - pad * 2, r);
+        ctx.stroke();
+
+        if (cell.isMine) {
+            drawCharge(centerX, centerY, s, cell, now);
+        } else if (cell.isWrongFlag) {
+            ctx.strokeStyle = '#ff4757';
+            ctx.lineWidth = Math.max(2, s * 0.09);
+            ctx.lineCap = 'round';
+            const m = s * 0.3;
+            ctx.beginPath();
+            ctx.moveTo(centerX - m, centerY - m);
+            ctx.lineTo(centerX + m, centerY + m);
+            ctx.moveTo(centerX + m, centerY - m);
+            ctx.lineTo(centerX - m, centerY + m);
+            ctx.stroke();
+        } else {
+            if (cell.hasForce) drawForceArrow(centerX, centerY, s, now);
+            if (cell.hasNumber && cell.adjacent > 0) {
+                const color = NUM_COLORS[cell.adjacent] || '#ffffff';
+                const pulse = 1 + Math.sin(now / 500 + cx * 0.5) * 0.05 * cell.infoPulse;
+                ctx.font = `900 ${Math.floor(s * 0.55 * pulse)}px system-ui, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.save();
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = color;
+                ctx.fillText(cell.adjacent, centerX, centerY + 1);
+                ctx.restore();
+                ctx.textBaseline = 'alphabetic';
+            } else if (!cell.hasNumber && !cell.hasForce) {
+                ctx.font = `700 ${Math.floor(s * 0.35)}px system-ui, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(80, 130, 160, 0.35)';
+                ctx.fillText('?', centerX, centerY + 1);
+                ctx.textBaseline = 'alphabetic';
+            }
+        }
+        ctx.restore();
+    }
+}
+
+function drawForceArrow(centerX, centerY, s, now) {
+    const { fx, fy } = computeFieldAt(centerX, centerY);
+    const mag = Math.hypot(fx, fy);
+    if (mag < 1e-7) return;
+    const nx = fx / mag, ny = fy / mag;
+    const arrowLen = clamp(Math.log(mag + 1) * 4, 6, s * 0.42);
+    const strength = clamp(mag / 4000, 0, 1);
+    const r = Math.round(80 + 175 * strength);
+    const g = Math.round(200 - 100 * strength);
+    const b = Math.round(255 - 155 * strength);
+    const startX = centerX - nx * s * 0.08;
+    const startY = centerY - ny * s * 0.08;
+    const endX = centerX + nx * arrowLen;
+    const endY = centerY + ny * arrowLen;
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    ctx.shadowColor = `rgb(${r}, ${g}, ${b})`;
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+    ctx.lineWidth = Math.max(1.5, s * 0.045);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    const angle = Math.atan2(ny, nx);
+    const headLen = Math.max(4, s * 0.11);
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX - headLen * Math.cos(angle - 0.5), endY - headLen * Math.sin(angle - 0.5));
+    ctx.lineTo(endX - headLen * Math.cos(angle + 0.5), endY - headLen * Math.sin(angle + 0.5));
+    ctx.closePath();
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    ctx.fill();
+    ctx.restore();
+}
+
+// ---- 电荷绘制（支持三种类型） ----
+function drawCharge(centerX, centerY, s, cell, now) {
+    const isPos = cell.mineSign > 0;
+    const rgb = isPos ? '255, 92, 108' : '77, 124, 255';
+    const R = s * 0.27;
+
+    if (cell.mineType === 'hring') {
+        drawHRingCharge(centerX, centerY, R, rgb, isPos, s, now);
+    } else if (cell.mineType === 'vring') {
+        drawVRingCharge(centerX, centerY, R, rgb, isPos, s, now);
+    } else {
+        drawPointCharge(centerX, centerY, R, rgb, isPos, s, now);
+    }
+}
+
+// 点电荷
+function drawPointCharge(cx, cy, R, rgb, isPos, s, now) {
+    drawChargeFieldLines(cx, cy, R, isPos, s);
+    const g = ctx.createRadialGradient(cx, cy, R * 0.5, cx, cy, R * 2.4);
+    g.addColorStop(0, `rgba(${rgb}, 0.35)`);
+    g.addColorStop(1, `rgba(${rgb}, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, R * 2.4, 0, Math.PI * 2); ctx.fill();
+
+    ctx.save();
+    ctx.shadowColor = `rgb(${rgb})`;
+    ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${rgb})`; ctx.fill();
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = Math.max(1.2, s * 0.04);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.lineWidth = Math.max(1.5, s * 0.06);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - R * 0.4, cy); ctx.lineTo(cx + R * 0.4, cy);
+    if (isPos) { ctx.moveTo(cx, cy - R * 0.4); ctx.lineTo(cx, cy + R * 0.4); }
+    ctx.stroke();
+}
+
+// 水平环
+function drawHRingCharge(cx, cy, R, rgb, isPos, s, now) {
+    const rx = R * 1.15;
+    const ry = R * 0.55;
+    // 电场线
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = isPos ? 'rgba(255, 150, 150, 0.8)' : 'rgba(150, 180, 255, 0.8)';
+    ctx.lineWidth = Math.max(1, s * 0.03);
+    // 水平方向强
+    const hDirs = [0, Math.PI];
+    for (const a of hDirs) {
+        const nx = Math.cos(a), ny = Math.sin(a);
+        ctx.beginPath();
+        ctx.moveTo(cx + nx * rx * 1.4, cy + ny * ry * 1.4);
+        ctx.lineTo(cx + nx * rx * 2.2, cy + ny * ry * 2.2);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    // 外光晕
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 2.2);
+    g.addColorStop(0, `rgba(${rgb}, 0.30)`);
+    g.addColorStop(1, `rgba(${rgb}, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx * 2.2, ry * 2.2, 0, 0, Math.PI * 2); ctx.fill();
+
+    // 椭圆主体
+    ctx.save();
+    ctx.shadowColor = `rgb(${rgb})`;
+    ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${rgb})`; ctx.fill();
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = Math.max(1.2, s * 0.04);
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+
+    // 符号
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.lineWidth = Math.max(1.5, s * 0.06);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - rx * 0.35, cy); ctx.lineTo(cx + rx * 0.35, cy);
+    if (isPos) { ctx.moveTo(cx, cy - ry * 0.5); ctx.lineTo(cx, cy + ry * 0.5); }
+    ctx.stroke();
+
+    // H 标记
+    ctx.font = `700 ${Math.floor(s * 0.18)}px monospace`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('H', cx, cy - ry * 1.6);
+    ctx.textBaseline = 'alphabetic';
+}
+
+// 垂直环
+function drawVRingCharge(cx, cy, R, rgb, isPos, s, now) {
+    const rx = R * 0.55;
+    const ry = R * 1.15;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = isPos ? 'rgba(255, 150, 150, 0.8)' : 'rgba(150, 180, 255, 0.8)';
+    ctx.lineWidth = Math.max(1, s * 0.03);
+    const vDirs = [Math.PI / 2, -Math.PI / 2];
+    for (const a of vDirs) {
+        const nx = Math.cos(a), ny = Math.sin(a);
+        ctx.beginPath();
+        ctx.moveTo(cx + nx * rx * 1.4, cy + ny * ry * 1.4);
+        ctx.lineTo(cx + nx * rx * 2.2, cy + ny * ry * 2.2);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 2.2);
+    g.addColorStop(0, `rgba(${rgb}, 0.30)`);
+    g.addColorStop(1, `rgba(${rgb}, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx * 2.2, ry * 2.2, 0, 0, Math.PI * 2); ctx.fill();
+
+    ctx.save();
+    ctx.shadowColor = `rgb(${rgb})`;
+    ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${rgb})`; ctx.fill();
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = Math.max(1.2, s * 0.04);
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.lineWidth = Math.max(1.5, s * 0.06);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - rx * 0.5, cy); ctx.lineTo(cx + rx * 0.5, cy);
+    if (isPos) { ctx.moveTo(cx, cy - ry * 0.35); ctx.lineTo(cx, cy + ry * 0.35); }
+    ctx.stroke();
+
+    ctx.font = `700 ${Math.floor(s * 0.18)}px monospace`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('V', cx, cy - ry * 1.5);
+    ctx.textBaseline = 'alphabetic';
+}
+
+function drawChargeFieldLines(cx, cy, radius, isPositive, s) {
+    const count = 8;
+    const startR = radius * 1.15;
+    const endR = radius * 2.1;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = isPositive ? 'rgba(255, 150, 150, 0.8)' : 'rgba(150, 180, 255, 0.8)';
+    ctx.lineWidth = Math.max(1, s * 0.03);
+    for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + (isPositive ? 0 : Math.PI / count);
+        const nx = Math.cos(angle), ny = Math.sin(angle);
+        if (isPositive) {
+            ctx.beginPath();
+            ctx.moveTo(cx + nx * startR, cy + ny * startR);
+            ctx.lineTo(cx + nx * endR, cy + ny * endR);
+            ctx.stroke();
+            const tipX = cx + nx * endR, tipY = cy + ny * endR;
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - Math.cos(angle - 0.5) * 4, tipY - Math.sin(angle - 0.5) * 4);
+            ctx.lineTo(tipX - Math.cos(angle + 0.5) * 4, tipY - Math.sin(angle + 0.5) * 4);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255, 150, 150, 0.8)';
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(cx + nx * endR, cy + ny * endR);
+            ctx.lineTo(cx + nx * startR, cy + ny * startR);
+            ctx.stroke();
+            const tipX = cx + nx * startR, tipY = cy + ny * startR;
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX + Math.cos(angle - 0.5) * 4, tipY + Math.sin(angle - 0.5) * 4);
+            ctx.lineTo(tipX + Math.cos(angle + 0.5) * 4, tipY + Math.sin(angle + 0.5) * 4);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(150, 180, 255, 0.8)';
+            ctx.fill();
+        }
+    }
+    ctx.restore();
+}
+
+function drawFlag(cx, cy, s, now) {
+    const pulse = 1 + Math.sin(now / 400) * 0.1;
+    const flagSize = s * 0.26 * pulse;
+    ctx.strokeStyle = '#ffd966';
+    ctx.lineWidth = Math.max(1.5, s * 0.05);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - flagSize * 0.5, cy + flagSize * 0.8);
+    ctx.lineTo(cx - flagSize * 0.5, cy - flagSize);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - flagSize * 0.5, cy - flagSize);
+    ctx.lineTo(cx + flagSize * 0.9, cy - flagSize * 0.5);
+    ctx.lineTo(cx - flagSize * 0.5, cy);
+    ctx.closePath();
+    ctx.fillStyle = '#ffd966';
+    ctx.save();
+    ctx.shadowColor = '#ffd966';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255, 217, 102, 0.5)';
+    ctx.beginPath();
+    ctx.ellipse(cx - flagSize * 0.5, cy + flagSize * 0.85, flagSize * 0.6, flagSize * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function roundRect(x, y, w, h, r) {
+    if (ctx.roundRect) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+    } else {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+}
+
+// ============================================================
+//  道具栏 UI
+// ============================================================
+function updateItemBar() {
+    for (const key in ITEMS) {
+        const slot = document.querySelector(`.item-slot[data-item="${key}"]`);
+        if (!slot) continue;
+        const enabled = state.itemEnabled[key];
+        const count = state.inventory[key] || 0;
+        const countEl = slot.querySelector('.item-count');
+        if (countEl) countEl.textContent = count;
+        slot.classList.toggle('disabled', !enabled);
+        slot.classList.toggle('empty', enabled && count <= 0);
+        slot.classList.toggle('active', state.activeItem === key);
+    }
+}
+
+function setActiveItem(item) {
+    if (!state.itemEnabled[item]) {
+        showToast('该道具已被禁用', 1200, 'warn');
+        return;
+    }
+    if ((state.inventory[item] || 0) <= 0) {
+        showToast('该道具已用完', 1200, 'warn');
+        return;
+    }
+    if (state.activeItem === item) {
+        state.activeItem = null;
+    } else {
+        state.activeItem = item;
+        const cfg = ITEMS[item];
+        showToast(`${cfg.icon} ${cfg.name} · 点击画布使用`, 1500, '');
+    }
+    updateItemBar();
+}
+
+document.querySelectorAll('.item-slot').forEach(slot => {
+    slot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const item = slot.dataset.item;
+        if (!item) return;
+        if (state.gameState === 'won' || state.gameState === 'lost') return;
+        sfxClick();
+        if (item === 'shield') {
+            if (!state.itemEnabled.shield) { showToast('护盾已被禁用', 1200, 'warn'); return; }
+            if (state.inventory.shield > 0 && !state.shieldActive) {
+                state.inventory.shield--;
+                state.shieldActive = true;
+                state.shieldGlow = 1;
+                updateItemBar();
+                sfxItem();
+                showToast('🛡️ 护盾已激活', 2000, 'success');
+            } else if (state.shieldActive) {
+                showToast('护盾已激活', 1200, 'warn');
+            } else {
+                showToast('护盾已用完', 1200, 'warn');
+            }
+            return;
+        }
+        setActiveItem(item);
+    });
+});
+
+// ============================================================
+//  坐标 / 输入
+// ============================================================
+function getCellAt(px, py) {
+    if (state.cellSize <= 0) return null;
+    const cx = Math.floor((px - state.offsetX) / state.cellSize);
+    const cy = Math.floor((py - state.offsetY) / state.cellSize);
+    if (cx < 0 || cx >= state.cols || cy < 0 || cy >= state.rows) return null;
+    return { x: cx, y: cy };
+}
+function getPointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+canvas.addEventListener('pointerdown', function (e) {
+    if (!state.running || state.paused) return;
+    if (state.gameState === 'won' || state.gameState === 'lost') return;
+    e.preventDefault();
+    const pos = getPointerPos(e);
+    const cell = getCellAt(pos.x, pos.y);
+    if (!cell) return;
+    if (state.activeItem) {
+        const used = useItem(state.activeItem, cell.x, cell.y);
+        if (used) {
+            state.activeItem = null;
+            updateItemBar();
+        }
+        return;
+    }
+    if (e.button === 2) { toggleFlag(cell.x, cell.y); return; }
+    if (e.button === 0 || e.pointerType === 'touch') {
+        state.pointerDownCell = cell;
+        state.longPressUsed = false;
+        if (state.longPressTimer) clearTimeout(state.longPressTimer);
+        state.longPressTimer = setTimeout(() => {
+            if (state.pointerDownCell) {
+                toggleFlag(state.pointerDownCell.x, state.pointerDownCell.y);
+                state.longPressUsed = true;
+            }
+            state.longPressTimer = null;
+        }, 420);
+    }
+});
+
+canvas.addEventListener('pointerup', function (e) {
+    if (!state.running || state.paused) return;
+    if (state.gameState === 'won' || state.gameState === 'lost') return;
+    if (state.longPressTimer) {
+        clearTimeout(state.longPressTimer);
+        state.longPressTimer = null;
+    }
+    if (state.longPressUsed) {
+        state.longPressUsed = false;
+        state.pointerDownCell = null;
+        return;
+    }
+    if (e.button === 0 || e.pointerType === 'touch') {
+        const pos = getPointerPos(e);
+        const cell = getCellAt(pos.x, pos.y);
+        if (cell && !state.activeItem) handleReveal(cell.x, cell.y);
+    }
+    state.pointerDownCell = null;
+});
+
+canvas.addEventListener('pointerleave', function () {
+    if (state.longPressTimer) {
+        clearTimeout(state.longPressTimer);
+        state.longPressTimer = null;
+    }
+    state.pointerDownCell = null;
+});
+
+// ============================================================
+//  键盘
+// ============================================================
+window.addEventListener('keydown', function (e) {
+    if (e.code === 'KeyM') {
+        if (state.running) state.paused ? hidePause() : showPause();
+        return;
+    }
+    if (e.code === 'KeyR' && state.running) {
+        hideResult();
+        startNewGame();
+        return;
+    }
+    if (e.code === 'Escape') {
+        if (state.activeItem) {
+            state.activeItem = null;
+            updateItemBar();
+        } else if (state.running) {
+            state.paused ? hidePause() : showPause();
+        }
+        return;
+    }
+    if (state.running && !state.paused) {
+        const keyMap = { 'Digit1': 'probe', 'Digit2': 'scan', 'Digit3': 'vector', 'Digit4': 'locate', 'Digit5': 'shield' };
+        if (keyMap[e.code]) {
+            e.preventDefault();
+            const item = keyMap[e.code];
+            if (!state.itemEnabled[item]) { showToast('该道具已被禁用', 1200, 'warn'); return; }
+            if (item === 'shield') {
+                if (state.inventory.shield > 0 && !state.shieldActive) {
+                    state.inventory.shield--;
+                    state.shieldActive = true;
+                    state.shieldGlow = 1;
+                    updateItemBar();
+                    sfxItem();
+                    showToast('🛡️ 护盾已激活', 1800, 'success');
+                }
+            } else {
+                setActiveItem(item);
+            }
+        }
+    }
+});
+
+// ============================================================
+//  开始界面
+// ============================================================
+function updateStartBests() {
+    const b = state.best;
+    const e1 = document.getElementById('bestEasy');
+    const e2 = document.getElementById('bestMedium');
+    const e3 = document.getElementById('bestHard');
+    e1.textContent = b.easy ? `最佳 ${b.easy}s` : '';
+    e1.className = 'diff-best' + (b.easy ? ' has-best' : '');
+    e2.textContent = b.medium ? `最佳 ${b.medium}s` : '';
+    e2.className = 'diff-best' + (b.medium ? ' has-best' : '');
+    e3.textContent = b.hard ? `最佳 ${b.hard}s` : '';
+    e3.className = 'diff-best' + (b.hard ? ' has-best' : '');
+}
+
+// 自定义面板联动
+function initCustomPanel() {
+    const customPanel = document.getElementById('customPanel');
+    const colsSlider = document.getElementById('customCols');
+    const rowsSlider = document.getElementById('customRows');
+    const minesSlider = document.getElementById('customMines');
+    const colsVal = document.getElementById('colsVal');
+    const rowsVal = document.getElementById('rowsVal');
+    const minesVal = document.getElementById('minesVal');
+
+    // 加载保存的自定义配置
+    if (state.customConfig) {
+        colsSlider.value = state.customConfig.cols;
+        rowsSlider.value = state.customConfig.rows;
+        minesSlider.value = state.customConfig.mines;
+    }
+
+    function updateMinesMax() {
+        const maxMines = Math.max(3, Math.min(state.cols * state.rows - 9, 80));
+        minesSlider.max = maxMines;
+        if (parseInt(minesSlider.value) > maxMines) {
+            minesSlider.value = maxMines;
+        }
+        minesVal.textContent = minesSlider.value;
+    }
+
+    function syncConfig() {
+        const cols = parseInt(colsSlider.value);
+        const rows = parseInt(rowsSlider.value);
+        const mines = parseInt(minesSlider.value);
+        colsVal.textContent = cols;
+        rowsVal.textContent = rows;
+        minesVal.textContent = mines;
+        state.customConfig = { cols, rows, mines };
+
+        // 检查地雷数上限
+        const maxMines = cols * rows - 9;
+        if (mines > maxMines) {
+            minesSlider.value = maxMines;
+            minesVal.textContent = maxMines;
+            state.customConfig.mines = maxMines;
+        }
+
+        // 保存
+        savePrefs({
+            customConfig: state.customConfig,
+            itemEnabled: state.itemEnabled,
+            mineTypes: state.mineTypes,
+        });
+    }
+
+    colsSlider.addEventListener('input', syncConfig);
+    rowsSlider.addEventListener('input', syncConfig);
+    minesSlider.addEventListener('input', syncConfig);
+
+    // 地雷类型切换
+    ['typePoint', 'typeHRing', 'typeVRing'].forEach(id => {
+        const el = document.getElementById(id);
+        const key = id === 'typePoint' ? 'point' : id === 'typeHRing' ? 'hring' : 'vring';
+        el.addEventListener('change', () => {
+            // 至少保留一种
+            const checked = document.getElementById('typePoint').checked ||
+                           document.getElementById('typeHRing').checked ||
+                           document.getElementById('typeVRing').checked;
+            if (!checked) {
+                el.checked = true;
+                showToast('至少需要启用一种地雷类型', 1500, 'warn');
+                return;
+            }
+            state.mineTypes[key] = el.checked;
+            savePrefs({
+                customConfig: state.customConfig,
+                itemEnabled: state.itemEnabled,
+                mineTypes: state.mineTypes,
+            });
+        });
+    });
+
+    // 道具启用切换
+    const itemToggles = {
+        'itemProbe': 'probe',
+        'itemScan': 'scan',
+        'itemVector': 'vector',
+        'itemLocate': 'locate',
+        'itemShield': 'shield',
+    };
+    for (const [id, key] of Object.entries(itemToggles)) {
+        const el = document.getElementById(id);
+        el.addEventListener('change', () => {
+            // 至少保留 2 种道具
+            const enabledCount = Object.values(state.itemEnabled).filter(v => v).length;
+            if (!el.checked && enabledCount <= 1) {
+                el.checked = true;
+                showToast('至少需要启用一种道具', 1500, 'warn');
+                return;
+            }
+            state.itemEnabled[key] = el.checked;
+            savePrefs({
+                customConfig: state.customConfig,
+                itemEnabled: state.itemEnabled,
+                mineTypes: state.mineTypes,
+            });
+        });
+    }
+}
+
+// 同步自定义面板的 UI 到当前状态
+function syncCustomPanelUI() {
+    if (state.customConfig) {
+        document.getElementById('customCols').value = state.customConfig.cols;
+        document.getElementById('customRows').value = state.customConfig.rows;
+        document.getElementById('customMines').value = state.customConfig.mines;
+        document.getElementById('colsVal').textContent = state.customConfig.cols;
+        document.getElementById('rowsVal').textContent = state.customConfig.rows;
+        document.getElementById('minesVal').textContent = state.customConfig.mines;
+    }
+    document.getElementById('typePoint').checked = state.mineTypes.point;
+    document.getElementById('typeHRing').checked = state.mineTypes.hring;
+    document.getElementById('typeVRing').checked = state.mineTypes.vring;
+    document.getElementById('itemProbe').checked = state.itemEnabled.probe;
+    document.getElementById('itemScan').checked = state.itemEnabled.scan;
+    document.getElementById('itemVector').checked = state.itemEnabled.vector;
+    document.getElementById('itemLocate').checked = state.itemEnabled.locate;
+    document.getElementById('itemShield').checked = state.itemEnabled.shield;
+}
+
+function initStartScreen() {
+    const customPanel = document.getElementById('customPanel');
+
+    document.querySelectorAll('#startDiffGrid .diff-card').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sfxClick();
+            state.difficulty = el.dataset.diff;
+            document.querySelectorAll('#startDiffGrid .diff-card').forEach(e2 => e2.classList.remove('selected'));
+            el.classList.add('selected');
+            if (state.difficulty === 'custom') {
+                customPanel.classList.add('open');
+                syncCustomPanelUI();
+            } else {
+                customPanel.classList.remove('open');
+            }
+        });
+    });
+
+    document.getElementById('startPlay').addEventListener('click', (e) => {
+        e.stopPropagation();
+        initAudio();
+        sfxClick();
+        startGame();
+    });
+
+    initCustomPanel();
+    updateStartBests();
+}
+
+function startGame() {
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('menuBtn').classList.add('visible');
+    document.getElementById('hintBar').classList.add('visible');
+    document.getElementById('itemBar').classList.add('visible');
+    state.running = true;
+    state.paused = false;
+    startNewGame();
+}
+
+// ============================================================
+//  新一局
+// ============================================================
+function startNewGame() {
+    let cfg;
+    let diffKey = state.difficulty;
+
+    if (diffKey === 'custom') {
+        const cc = state.customConfig || { cols: 12, rows: 12, mines: 22 };
+        cfg = {
+            cols: cc.cols,
+            rows: cc.rows,
+            mines: cc.mines,
+            name: '自定义',
+            startItems: {
+                probe: state.itemEnabled.probe ? 4 : 0,
+                scan: state.itemEnabled.scan ? 3 : 0,
+                vector: state.itemEnabled.vector ? 3 : 0,
+                locate: state.itemEnabled.locate ? 1 : 0,
+                shield: state.itemEnabled.shield ? 1 : 0,
+            },
+        };
+    } else {
+        cfg = DIFFICULTIES[diffKey];
+        // 应用道具启用状态
+        const baseItems = { ...cfg.startItems };
+        for (const key in baseItems) {
+            if (!state.itemEnabled[key]) baseItems[key] = 0;
+        }
+        cfg = { ...cfg, startItems: baseItems };
+    }
+
+    state.cols = cfg.cols;
+    state.rows = cfg.rows;
+    state.mineCount = cfg.mines;
+    state.gameState = 'ready';
+    state.startTime = 0;
+    state.elapsed = 0;
+    state.particles = [];
+    state.ripples = [];
+    state.activeItem = null;
+    state.shieldActive = false;
+    state.shieldGlow = 0;
+
+    // 初始化道具
+    state.inventory = {};
+    for (const key in ITEMS) {
+        state.inventory[key] = state.itemEnabled[key] ? (cfg.startItems[key] || 0) : 0;
+    }
+
+    initGrid();
+    computeLayout();
+    updateMineCount();
+    updateItemBar();
+    document.getElementById('timer').textContent = '0';
+    document.getElementById('mineCount').textContent = state.mineCount;
+
+    hideResult();
+}
+
+// ============================================================
+//  暂停
+// ============================================================
+function showPause() {
+    state.paused = true;
+    document.getElementById('pauseScreen').classList.remove('hidden');
+}
+function hidePause() {
+    state.paused = false;
+    document.getElementById('pauseScreen').classList.add('hidden');
+}
+
+document.getElementById('resumeBtn').addEventListener('click', () => { sfxClick(); hidePause(); });
+document.getElementById('restartBtn').addEventListener('click', () => {
+    sfxClick(); hidePause(); startNewGame();
+});
+document.getElementById('backToMenuBtn').addEventListener('click', () => {
+    sfxClick(); hidePause(); hideResult();
+    state.running = false;
+    document.getElementById('startScreen').classList.remove('hidden');
+    document.getElementById('menuBtn').classList.remove('visible');
+    document.getElementById('hintBar').classList.remove('visible');
+    document.getElementById('itemBar').classList.remove('visible');
+    updateStartBests();
+    syncCustomPanelUI();
+    ctx.fillStyle = '#060a10';
+    ctx.fillRect(0, 0, W, H);
+});
+document.getElementById('menuBtn').addEventListener('click', () => { sfxClick(); showPause(); });
+document.getElementById('resetBtn').addEventListener('click', () => {
+    sfxClick();
+    if (state.running && !state.paused) startNewGame();
+});
+
+// ============================================================
+//  结果界面
+// ============================================================
+const resultScreen = document.getElementById('resultScreen');
+
+function showResult(isWin) {
+    const icon = document.getElementById('resultIcon');
+    const title = document.getElementById('resultTitle');
+    const timeEl = document.getElementById('resultTime');
+    const diffEl = document.getElementById('resultDiff');
+    const sizeEl = document.getElementById('resultSize');
+
+    if (isWin) {
+        icon.textContent = '🏆';
+        title.textContent = '探测成功！';
+        title.className = 'result-title win';
+        const t = state.elapsed;
+        timeEl.textContent = t.toFixed(1);
+        // 仅预设难度记录最佳
+        if (state.difficulty !== 'custom') {
+            const key = state.difficulty;
+            if (!state.best[key] || t < state.best[key]) {
+                state.best[key] = t;
+                saveBest(state.best);
+            }
+        }
+    } else {
+        icon.textContent = '💥';
+        title.textContent = '探测失败';
+        title.className = 'result-title lose';
+        timeEl.textContent = state.elapsed.toFixed(1);
+    }
+
+    if (state.difficulty === 'custom') {
+        diffEl.textContent = '自定义';
+    } else {
+        diffEl.textContent = DIFFICULTIES[state.difficulty].name;
+    }
+    sizeEl.textContent = `${state.cols}×${state.rows}`;
+
+    resultScreen.classList.remove('hidden');
+}
+
+function hideResult() {
+    resultScreen.classList.add('hidden');
+}
+
+document.getElementById('retryBtn').addEventListener('click', () => {
+    sfxClick(); hideResult(); startNewGame();
+});
+document.getElementById('menuBtn2').addEventListener('click', () => {
+    sfxClick(); hideResult();
+    state.running = false;
+    document.getElementById('startScreen').classList.remove('hidden');
+    document.getElementById('menuBtn').classList.remove('visible');
+    document.getElementById('hintBar').classList.remove('visible');
+    document.getElementById('itemBar').classList.remove('visible');
+    updateStartBests();
+    syncCustomPanelUI();
+    ctx.fillStyle = '#060a10';
+    ctx.fillRect(0, 0, W, H);
+});
+
+// ============================================================
+//  窗口尺寸
+// ============================================================
+let resizeTimer = 0;
+window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+        resize();
+        if (state.running && !state.paused) {
+            const wasReady = state.gameState === 'ready';
+            computeLayout();
+            if (wasReady) initGrid();
+        }
+    }, 220);
+});
+
+// ============================================================
+//  主循环
+// ============================================================
+let lastTime = 0;
+function loop(now) {
+    if (!lastTime) lastTime = now;
+    lastTime = now;
+    render();
+    requestAnimationFrame(loop);
+}
+
+// ============================================================
+//  启动
+// ============================================================
+resize();
+initStartScreen();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
